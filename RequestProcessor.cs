@@ -69,4 +69,11 @@ public class ServiceRequest
     public required string Id { get; set; }
     public required string Type { get; set; }
     public string? Payload { get; set; }
+
+    // Simulated customer data — demonstrates why crash pipelines
+    // must not leak service-side crash artifacts containing customer content.
+    public string? CustomerName { get; set; }
+    public string? CustomerEmail { get; set; }
+    public string? PaymentCard { get; set; }
+    public string? SSN { get; set; }
 }

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace DemoService;
 
 /// <summary>
@@ -9,11 +11,20 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly RequestProcessor _processor;
     private int _requestCount = 0;
+    private const string EventLogSource = "DemoService";
 
     public Worker(ILogger<Worker> logger, RequestProcessor processor)
     {
         _logger = logger;
         _processor = processor;
+
+        // Ensure event log source exists
+        try
+        {
+            if (!EventLog.SourceExists(EventLogSource))
+                EventLog.CreateEventSource(EventLogSource, "Application");
+        }
+        catch { /* May need admin for first run */ }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -28,9 +39,29 @@ public class Worker : BackgroundService
             _logger.LogInformation("Processing request #{Count}: Type={Type}, Id={Id}",
                 _requestCount, request.Type, request.Id);
 
-            var result = _processor.ProcessRequest(request);
+            try
+            {
+                var result = _processor.ProcessRequest(request);
+                _logger.LogInformation("Request #{Count} result: {Result}", _requestCount, result);
+            }
+            catch (Exception ex)
+            {
+                // Write full stack trace to Windows Event Log so the agent can find it
+                var message = $"DemoService crashed processing request {request.Id} (Type={request.Type})\n" +
+                              $"Customer: {request.CustomerName} ({request.CustomerEmail})\n" +
+                              $"Payment: {request.PaymentCard}\n" +
+                              $"SSN: {request.SSN}\n\n" +
+                              $"Exception: {ex.GetType().FullName}: {ex.Message}\n\n" +
+                              $"Stack Trace:\n{ex.StackTrace}";
 
-            _logger.LogInformation("Request #{Count} result: {Result}", _requestCount, result);
+                try { EventLog.WriteEntry(EventLogSource, message, EventLogEntryType.Error, 1000); }
+                catch { /* best effort */ }
+
+                _logger.LogCritical(ex, "Fatal: unhandled exception processing request {Id}", request.Id);
+
+                // Crash the process — this is the demo scenario
+                Environment.FailFast($"DemoService fatal error: {ex.Message}", ex);
+            }
 
             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
         }
@@ -46,7 +77,11 @@ public class Worker : BackgroundService
             {
                 Id = $"REQ-{sequence:D5}",
                 Type = "priority",
-                Payload = $"Urgent escalation for ticket TKT-{sequence}"
+                Payload = $"Urgent escalation for ticket TKT-{sequence}",
+                CustomerName = "Jane Doe",
+                CustomerEmail = "jane.doe@contoso.com",
+                PaymentCard = "4111-1111-1111-1111",
+                SSN = "078-05-1120"
             };
         }
 
