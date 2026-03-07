@@ -11,4 +11,13 @@ builder.Services.AddSingleton<RequestProcessor>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
-host.Run();
+
+try
+{
+    host.Run();
+}
+catch (OperationCanceledException)
+{
+    // Expected during graceful Windows service shutdown — WindowsServiceLifetime.StopAsync
+    // throws OperationCanceledException when the shutdown cancellation token fires.
+}

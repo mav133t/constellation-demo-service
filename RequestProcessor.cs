@@ -17,9 +17,7 @@ public class RequestProcessor
             ["standard"] = HandleStandard,
             ["batch"] = HandleBatch,
             ["health"] = HandleHealth,
-            // BUG: No handler registered for "priority" request type.
-            // When a priority request arrives, the dictionary lookup on line 38
-            // throws KeyNotFoundException, crashing the service.
+            ["priority"] = HandlePriority,
         };
     }
 
@@ -30,10 +28,12 @@ public class RequestProcessor
     {
         _logger.LogDebug("Routing request {Id} of type '{Type}'", request.Id, request.Type);
 
-        // BUG: Direct dictionary indexer throws KeyNotFoundException
-        // if request.Type is not in the handlers dictionary.
-        // Fix: Use TryGetValue to safely check before accessing.
-        var handler = _handlers[request.Type];
+        if (!_handlers.TryGetValue(request.Type, out var handler))
+        {
+            _logger.LogWarning("No handler registered for request type '{Type}', request {Id}", request.Type, request.Id);
+            return $"Unknown request type '{request.Type}' for {request.Id}";
+        }
+
         var result = handler(request);
 
         _logger.LogInformation("Request {Id} processed successfully: {Result}", request.Id, result);
@@ -58,6 +58,13 @@ public class RequestProcessor
     {
         // Simulate health check
         return $"Health check OK — system nominal at {DateTime.UtcNow:O}";
+    }
+
+    private string HandlePriority(ServiceRequest request)
+    {
+        // Simulate priority processing with expedited handling
+        Thread.Sleep(75);
+        return $"Priority processing complete for {request.Id}: {request.Payload}";
     }
 }
 
